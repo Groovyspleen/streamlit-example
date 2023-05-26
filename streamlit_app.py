@@ -1,38 +1,39 @@
-from collections import namedtuple
-import altair as alt
-import math
-import pandas as pd
 import streamlit as st
-
-"""
-# Welcome to Streamlit!
-
-Edit `/streamlit_app.py` to customize this app to your heart's desire :heart:
-
-If you have any questions, checkout our [documentation](https://docs.streamlit.io) and [community
-forums](https://discuss.streamlit.io).
-
-In the meantime, below is an example of what you can do with just a few lines of code:
-"""
+from streamlit_chat import message as st_message
+from transformers import BlenderbotTokenizer
+from transformers import BlenderbotForConditionalGeneration
 
 
-with st.echo(code_location='below'):
-    total_points = st.slider("Number of points in spiral", 1, 5000, 2000)
-    num_turns = st.slider("Number of turns in spiral", 1, 100, 9)
+@st.experimental_singleton
+def get_models():
+    # it may be necessary for other frameworks to cache the model
+    # seems pytorch keeps an internal state of the conversation
+    model_name = "facebook/blenderbot-400M-distill"
+    tokenizer = BlenderbotTokenizer.from_pretrained(model_name)
+    model = BlenderbotForConditionalGeneration.from_pretrained(model_name)
+    return tokenizer, model
 
-    Point = namedtuple('Point', 'x y')
-    data = []
 
-    points_per_turn = total_points / num_turns
+if "history" not in st.session_state:
+    st.session_state.history = []
 
-    for curr_point_num in range(total_points):
-        curr_turn, i = divmod(curr_point_num, points_per_turn)
-        angle = (curr_turn + 1) * 2 * math.pi * i / points_per_turn
-        radius = curr_point_num / total_points
-        x = radius * math.cos(angle)
-        y = radius * math.sin(angle)
-        data.append(Point(x, y))
+st.title("Hello Chatbot")
 
-    st.altair_chart(alt.Chart(pd.DataFrame(data), height=500, width=500)
-        .mark_circle(color='#0068c9', opacity=0.5)
-        .encode(x='x:Q', y='y:Q'))
+
+def generate_answer():
+    tokenizer, model = get_models()
+    user_message = st.session_state.input_text
+    inputs = tokenizer(st.session_state.input_text, return_tensors="pt")
+    result = model.generate(**inputs)
+    message_bot = tokenizer.decode(
+        result[0], skip_special_tokens=True
+    )  # .replace("<s>", "").replace("</s>", "")
+
+    st.session_state.history.append({"message": user_message, "is_user": True})
+    st.session_state.history.append({"message": message_bot, "is_user": False})
+
+
+st.text_input("Talk to the bot", key="input_text", on_change=generate_answer)
+
+for i, chat in enumerate(st.session_state.history):
+    st_message(**chat, key=str(i)) #unpacking
